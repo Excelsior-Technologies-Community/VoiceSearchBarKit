@@ -64,6 +64,20 @@ SearchBarView { text in
 
 ---
 
+## Required Permissions
+
+Add the following keys to your app’s **Info.plist**:
+
+```xml
+<key>NSSpeechRecognitionUsageDescription</key>
+<string>Voice search is used to convert speech into text.</string>
+
+<key>NSMicrophoneUsageDescription</key>
+<string>Microphone access is required for voice search.</string>
+```
+
+---
+
 ## Full Basic Example
 
 ```swift
@@ -236,20 +250,6 @@ When the user taps **Cancel**:
 * Your data resets to the original state
 
 No extra handling is required.
-
----
-
-## Required Permissions
-
-Add the following keys to your app’s **Info.plist**:
-
-```xml
-<key>NSSpeechRecognitionUsageDescription</key>
-<string>Voice search is used to convert speech into text.</string>
-
-<key>NSMicrophoneUsageDescription</key>
-<string>Microphone access is required for voice search.</string>
-```
 
 ---
 
