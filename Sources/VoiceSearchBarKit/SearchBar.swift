@@ -1,20 +1,16 @@
 //
 //  SearchBar.swift
-//  ImageSlider
+//  VoiceSearchBarKit
 //
-//  Created by Noman belim on 16/12/25.
+//  Created by Noman Belim on 16/12/25.
 //
 
-import Foundation
-import Foundation
-import Combine
-import Foundation
-import Combine
 import SwiftUI
-
-import Foundation
+import Combine
 import Speech
 import AVFoundation
+
+// MARK: - SearchBar ViewModel (Debounce Logic)
 
 final class SearchBarViewModel: ObservableObject {
 
@@ -48,7 +44,9 @@ final class SearchBarViewModel: ObservableObject {
         onSearch("")
     }
 }
- 
+
+// MARK: - Speech Recognizer (Voice Input)
+
 final class SpeechRecognizer: NSObject, ObservableObject {
 
     @Published var isRecording = false
@@ -79,8 +77,11 @@ final class SpeechRecognizer: NSObject, ObservableObject {
         }
 
         let format = inputNode.outputFormat(forBus: 0)
-        inputNode.installTap(onBus: 0, bufferSize: 1024, format: format) {
-            buffer, _ in
+        inputNode.installTap(
+            onBus: 0,
+            bufferSize: 1024,
+            format: format
+        ) { buffer, _ in
             request.append(buffer)
         }
 
@@ -99,17 +100,20 @@ final class SpeechRecognizer: NSObject, ObservableObject {
     }
 }
 
+// MARK: - SearchBar View (UI Component)
 
- 
 public struct SearchBarView: View {
 
     @StateObject private var viewModel: SearchBarViewModel
     @StateObject private var speech = SpeechRecognizer()
 
+    @State private var voiceErrorMessage: String?
     @FocusState private var isFocused: Bool
 
     private let placeholder: String
     private let enableVoice: Bool
+
+    // MARK: Initializer
 
     public init(
         placeholder: String = "Search",
@@ -126,58 +130,120 @@ public struct SearchBarView: View {
         self.placeholder = placeholder
         self.enableVoice = enableVoice
     }
+
+    // MARK: View Body
+
     public var body: some View {
-        HStack(spacing: 12) {
+        VStack(alignment: .leading, spacing: 4) {
 
-            Image(systemName: "magnifyingglass")
-                .foregroundColor(.gray)
+            HStack(spacing: 12) {
 
-            TextField(placeholder, text: $viewModel.query)
-                .focused($isFocused)
-                .textInputAutocapitalization(.none)
-                .disableAutocorrection(true)
+                Image(systemName: "magnifyingglass")
+                    .foregroundColor(.gray)
 
-            if enableVoice {
-                Button {
-                    if speech.isRecording {
-                        // *** MODIFICATION HERE ***
-                        // If recording, tapping the mic cancels both the recording and the current query.
-                        cancelSearch()
-                    } else {
-                        speech.requestPermission()
-                        try? speech.start { text in
-                            viewModel.query = text
-                        }
-                    }
-                } label: {
-                    Image(systemName: speech.isRecording ? "mic.fill" : "mic")
-                        .foregroundColor(speech.isRecording ? .red : .blue)
+                TextField(placeholder, text: $viewModel.query)
+                    .focused($isFocused)
+                    .textInputAutocapitalization(.none)
+                    .disableAutocorrection(true)
+
+                if enableVoice {
+                    micButton
                 }
 
+                if !viewModel.query.isEmpty || speech.isRecording {
+                    cancelButton
+                }
             }
+            .padding(12)
+            .background(Color(.systemGray6))
+            .cornerRadius(12)
+            .padding(.horizontal)
+            .animation(.easeInOut, value: viewModel.query)
+            .animation(.easeInOut, value: speech.isRecording)
 
-            if !viewModel.query.isEmpty || speech.isRecording {
-                Button("Cancel") {
-                    cancelSearch()
-                }
-                .foregroundColor(.red)
-                .transition(.opacity)
+            if let message = voiceErrorMessage {
+                Text(message)
+                    .font(.caption)
+                    .foregroundColor(.red)
+                    .padding(.horizontal)
             }
         }
-        .padding(12)
-        .background(Color(.systemGray6))
-        .cornerRadius(12)
-        .padding(.horizontal)
-        .animation(.easeInOut, value: viewModel.query)
-        // Add animation for the voice state change as well for a smoother transition
-        .animation(.easeInOut, value: speech.isRecording)
     }
+
+    // MARK: - Mic Button
+
+    private var micButton: some View {
+        Button {
+            if speech.isRecording {
+                speech.stop()
+            } else {
+                do {
+                    try VoicePermissionValidator.validate()
+                    speech.requestPermission()
+                    try speech.start { text in
+                        viewModel.query = text
+                    }
+                } catch {
+                    voiceErrorMessage = error.localizedDescription
+                    print(error.localizedDescription)
+                }
+            }
+        } label: {
+            Image(systemName: speech.isRecording ? "mic.fill" : "mic")
+                .foregroundColor(speech.isRecording ? .red : .blue)
+        }
+    }
+
+    // MARK: - Cancel Button
+
+    private var cancelButton: some View {
+        Button("Cancel") {
+            cancelSearch()
+        }
+        .foregroundColor(.red)
+        .transition(.opacity)
+    }
+
+    // MARK: - Actions
 
     private func cancelSearch() {
         viewModel.clear()
         speech.stop()
         isFocused = false
     }
- 
 }
 
+// MARK: - Voice Permission Error
+
+enum VoicePermissionError: LocalizedError {
+    case missingPlistKeys
+
+    var errorDescription: String? {
+        """
+        VoiceSearchBarKit Error:
+        Missing required Info.plist keys.
+
+        Please add:
+        - NSSpeechRecognitionUsageDescription
+        - NSMicrophoneUsageDescription
+        """
+    }
+}
+
+// MARK: - Voice Permission Validator
+
+struct VoicePermissionValidator {
+
+    static func validate() throws {
+        let info = Bundle.main.infoDictionary
+
+        let hasSpeechKey =
+            info?["NSSpeechRecognitionUsageDescription"] != nil
+        let hasMicKey =
+            info?["NSMicrophoneUsageDescription"] != nil
+
+        if !hasSpeechKey || !hasMicKey {
+            throw VoicePermissionError.missingPlistKeys
+        }
+    }
+}
